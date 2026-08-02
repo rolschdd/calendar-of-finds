@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
-require 'nokogiri'
-require 'sqlite3'
+require "nokogiri"
+require "sqlite3"
+require "time"
+require "tzinfo"
 
 INPUT_PATH, DB_PATH = ARGV
 if INPUT_PATH.nil? || DB_PATH.nil?
@@ -9,22 +11,30 @@ if INPUT_PATH.nil? || DB_PATH.nil?
   exit 1
 end
 
+GROUNDSPEAK_TIMEZONE = TZInfo::Timezone.get("America/Los_Angeles")
+
 # Get text of element with namespace-independent `local_name`.
 def text_of(node, local_name)
   node.at_xpath(".//*[local-name()='#{local_name}']")&.text&.strip
 end
 
-# Converts `iso_timestamp` (e.g. "2018-05-26T19:00:00Z") to date in the format "YYYY-MM-DD".
+# Converts `iso_timestamp` (e.g. "2018-05-26T19:00:00Z") to date in the format
+# "YYYY-MM-DD".
+# Some timezone calculation is needed here, because timestamps in XML are UTC
+# of the time @ groundspeak.
 def iso_to_date(iso_timestamp)
   raise(ArgumentError, "No valid ISO timestamp given, got nothing") if iso_timestamp.nil?
 
-  date_part = iso_timestamp.split('T').first
+  parsed_time =
+    begin
+      Time.parse(iso_timestamp)
+    rescue ArgumentError => _exception
+      raise ArgumentError, "No valid ISO timestamp given, got: #{iso_timestamp}"
+    end
 
-  if date_part.match?(/\A\d{4}-\d{2}-\d{2}\z/)
-    date_part
-  else
-    raise ArgumentError, "No valid ISO timestamp given, got: #{iso_timestamp}"
-  end
+  local_time = GROUNDSPEAK_TIMEZONE.to_local(parsed_time)
+
+  local_time.strftime("%Y-%m-%d")
 end
 
 # start from scratch - no update of existing db
